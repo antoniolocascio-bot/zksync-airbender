@@ -1,0 +1,55 @@
+[package]
+name = "metal_prover"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+build = "build/main.rs"
+
+[build-dependencies]
+# No cmake needed - we use xcrun for Metal compilation
+
+[dependencies]
+blake2s_u32 = { workspace = true }
+cs = { workspace = true }
+fft = { workspace = true }
+field = { workspace = true }
+prover = { workspace = true }
+riscv_transpiler = { workspace = true, features = ["jit"] }
+setups = { workspace = true }
+trace_and_split = { workspace = true }
+verifier_common = { workspace = true, features = ["proof_utils"] }
+worker = { workspace = true }
+itertools = { workspace = true }
+log = { workspace = true }
+
+crossbeam-channel = "0.5"
+crossbeam-utils = "0.8"
+rayon = "1"
+transpose = "0.2"
+type-map = "0.5"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+metal = "0.29"
+objc = "0.2"
+block = "0.1"
+
+[features]
+default = ["security_80"]
+deterministic_pow = ["prover/deterministic_pow"]
+log_gpu_mem_usage = []
+log_gpu_stages_timings = []
+security_80 = ["verifier_common/security_80"]
+security_100 = ["verifier_common/security_100"]
+
+[dev-dependencies]
+prover = { workspace = true, features = ["test"] }
+rand = { workspace = true }
+riscv_common = { workspace = true }
+setups = { workspace = true, features = ["witness_eval_fn"] }
+trace_holder = { workspace = true }
+env_logger = "0.11"

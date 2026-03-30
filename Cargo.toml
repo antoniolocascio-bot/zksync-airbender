@@ -30,6 +30,8 @@ members = [
     "gpu_prover",
     "gpu_prover_test",
 
+    "metal_prover",
+
     "reduced_keccak",
 
     "tools/cli",
