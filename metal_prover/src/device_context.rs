@@ -79,7 +79,7 @@ fn generate_powers_buf<F: Field>(
         bitreverse_enumeration_inplace(&mut powers_host);
     }
     let mut buf = MetalBuffer::<F>::new(device, len);
-    buf.copy_from_slice(&powers_host);
+    buf.load_from_host(&powers_host);
     buf
 }
 
@@ -154,7 +154,7 @@ impl DeviceContext {
         let mut inv_sizes_host = vec![BaseField::ONE; (OMEGA_LOG_ORDER + 1) as usize];
         distribute_powers_serial(&mut inv_sizes_host, BaseField::ONE, two_inv);
         let mut inv_sizes = MetalBuffer::<BaseField>::new(device, inv_sizes_host.len());
-        inv_sizes.copy_from_slice(&inv_sizes_host);
+        inv_sizes.load_from_host(&inv_sizes_host);
 
         Self {
             powers_of_w_fine,

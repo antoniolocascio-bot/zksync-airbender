@@ -1,3 +1,4 @@
+#pragma once
 #include <metal_stdlib>
 using namespace metal;
 
@@ -69,12 +70,12 @@ DEVICE_FORCEINLINE void transpose_tile(thread T *u, const unsigned lane_id) {
 // Simplified load/store: Metal manages caches automatically, just dereference pointers.
 template <class T> DEVICE_FORCEINLINE T load(const device T *address) { return *address; }
 template <class T> DEVICE_FORCEINLINE T load(const device T *address, const unsigned offset) { return *(address + offset); }
-template <class T> DEVICE_FORCEINLINE void store(device T *address, const T &value) { *address = value; }
-template <class T> DEVICE_FORCEINLINE void store(device T *address, const T &value, const unsigned offset) { *(address + offset) = value; }
+template <class T> DEVICE_FORCEINLINE void store(device T *address, thread const T &value) { *address = value; }
+template <class T> DEVICE_FORCEINLINE void store(device T *address, thread const T &value, const unsigned offset) { *(address + offset) = value; }
 
 // Load/store from threadgroup memory
 template <class T> DEVICE_FORCEINLINE T load_tg(const threadgroup T *address) { return *address; }
-template <class T> DEVICE_FORCEINLINE void store_tg(threadgroup T *address, const T &value) { *address = value; }
+template <class T> DEVICE_FORCEINLINE void store_tg(threadgroup T *address, thread const T &value) { *address = value; }
 
 // Vector accessor pattern (simplified, no modifier templates)
 template <typename T> struct vector_accessor {
@@ -83,8 +84,8 @@ template <typename T> struct vector_accessor {
 
   DEVICE_FORCEINLINE T get() const { return *ptr; }
   DEVICE_FORCEINLINE T get(const unsigned i) const { return *(ptr + i); }
-  DEVICE_FORCEINLINE void set(const T &value) const { *ptr = value; }
-  DEVICE_FORCEINLINE void set(const unsigned i, const T &value) const { *(ptr + i) = value; }
+  DEVICE_FORCEINLINE void set(thread const T &value) const { *ptr = value; }
+  DEVICE_FORCEINLINE void set(const unsigned i, thread const T &value) const { *(ptr + i) = value; }
 };
 
 template <typename T> struct vector_getter {
@@ -118,8 +119,8 @@ template <typename T> struct vector_setter {
   using value_type = T;
   device T *ptr;
 
-  DEVICE_FORCEINLINE void set(const T &value) const { *ptr = value; }
-  DEVICE_FORCEINLINE void set(const unsigned i, const T &value) const { *(ptr + i) = value; }
+  DEVICE_FORCEINLINE void set(thread const T &value) const { *ptr = value; }
+  DEVICE_FORCEINLINE void set(const unsigned i, thread const T &value) const { *(ptr + i) = value; }
 
   DEVICE_FORCEINLINE vector_setter operator+(const unsigned offset) const {
     vector_setter result = *this;
@@ -159,10 +160,10 @@ template <typename T> struct matrix_setter {
   explicit matrix_setter(size_t stride) : ptr(nullptr), stride(stride) {}
   matrix_setter(device T *ptr, size_t stride) : ptr(ptr), stride(stride) {}
 
-  DEVICE_FORCEINLINE void set(const T &value) const { *ptr = value; }
-  DEVICE_FORCEINLINE void set_at_row(const unsigned row, const T &value) const { *(ptr + row) = value; }
-  DEVICE_FORCEINLINE void set_at_col(const unsigned col, const T &value) const { *(ptr + col * stride) = value; }
-  DEVICE_FORCEINLINE void set(const unsigned row, const unsigned col, const T &value) const { *(ptr + row + col * stride) = value; }
+  DEVICE_FORCEINLINE void set(thread const T &value) const { *ptr = value; }
+  DEVICE_FORCEINLINE void set_at_row(const unsigned row, thread const T &value) const { *(ptr + row) = value; }
+  DEVICE_FORCEINLINE void set_at_col(const unsigned col, thread const T &value) const { *(ptr + col * stride) = value; }
+  DEVICE_FORCEINLINE void set(const unsigned row, const unsigned col, thread const T &value) const { *(ptr + row + col * stride) = value; }
 
   DEVICE_FORCEINLINE void add_row(const unsigned offset) { ptr += offset; }
   DEVICE_FORCEINLINE void sub_row(const unsigned offset) { ptr -= offset; }
@@ -182,10 +183,10 @@ template <typename T> struct matrix_getter_setter {
   DEVICE_FORCEINLINE T get_at_row(const unsigned row) const { return *(ptr + row); }
   DEVICE_FORCEINLINE T get_at_col(const unsigned col) const { return *(ptr + col * stride); }
   DEVICE_FORCEINLINE T get(const unsigned row, const unsigned col) const { return *(ptr + row + col * stride); }
-  DEVICE_FORCEINLINE void set(const T &value) const { *ptr = value; }
-  DEVICE_FORCEINLINE void set_at_row(const unsigned row, const T &value) const { *(ptr + row) = value; }
-  DEVICE_FORCEINLINE void set_at_col(const unsigned col, const T &value) const { *(ptr + col * stride) = value; }
-  DEVICE_FORCEINLINE void set(const unsigned row, const unsigned col, const T &value) const { *(ptr + row + col * stride) = value; }
+  DEVICE_FORCEINLINE void set(thread const T &value) const { *ptr = value; }
+  DEVICE_FORCEINLINE void set_at_row(const unsigned row, thread const T &value) const { *(ptr + row) = value; }
+  DEVICE_FORCEINLINE void set_at_col(const unsigned col, thread const T &value) const { *(ptr + col * stride) = value; }
+  DEVICE_FORCEINLINE void set(const unsigned row, const unsigned col, thread const T &value) const { *(ptr + row + col * stride) = value; }
 
   DEVICE_FORCEINLINE void add_row(const unsigned offset) { ptr += offset; }
   DEVICE_FORCEINLINE void sub_row(const unsigned offset) { ptr -= offset; }
@@ -208,8 +209,8 @@ template <typename T> struct wrapping_vector_setter {
   T internal;
   unsigned count;
 
-  DEVICE_FORCEINLINE void set(const typename T::value_type &value) const { internal.set(value); }
-  DEVICE_FORCEINLINE void set(const unsigned i, const typename T::value_type &value) const { internal.set(i % count, value); }
+  DEVICE_FORCEINLINE void set(thread const typename T::value_type &value) const { internal.set(value); }
+  DEVICE_FORCEINLINE void set(const unsigned i, thread const typename T::value_type &value) const { internal.set(i % count, value); }
 };
 
 template <typename T> struct wrapping_matrix_getter {
@@ -230,10 +231,10 @@ template <typename T> struct wrapping_matrix_setter {
   unsigned rows;
   unsigned cols;
 
-  DEVICE_FORCEINLINE void set(const typename T::value_type &value) const { internal.set(value); }
-  DEVICE_FORCEINLINE void set_at_row(const unsigned row, const typename T::value_type &value) const { internal.set_at_row(row % rows, value); }
-  DEVICE_FORCEINLINE void set_at_col(const unsigned col, const typename T::value_type &value) const { internal.set_at_col(col % cols, value); }
-  DEVICE_FORCEINLINE void set(const unsigned row, const unsigned col, const typename T::value_type &value) const { internal.set(row % rows, col % cols, value); }
+  DEVICE_FORCEINLINE void set(thread const typename T::value_type &value) const { internal.set(value); }
+  DEVICE_FORCEINLINE void set_at_row(const unsigned row, thread const typename T::value_type &value) const { internal.set_at_row(row % rows, value); }
+  DEVICE_FORCEINLINE void set_at_col(const unsigned col, thread const typename T::value_type &value) const { internal.set_at_col(col % cols, value); }
+  DEVICE_FORCEINLINE void set(const unsigned row, const unsigned col, thread const typename T::value_type &value) const { internal.set(row % rows, col % cols, value); }
 };
 
 template <typename T> struct wrapping_matrix_getter_setter {
@@ -246,10 +247,10 @@ template <typename T> struct wrapping_matrix_getter_setter {
   DEVICE_FORCEINLINE typename T::value_type get_at_row(const unsigned row) const { return internal.get_at_row(row % rows); }
   DEVICE_FORCEINLINE typename T::value_type get_at_col(const unsigned col) const { return internal.get_at_col(col % cols); }
   DEVICE_FORCEINLINE typename T::value_type get(const unsigned row, const unsigned col) const { return internal.get(row % rows, col % cols); }
-  DEVICE_FORCEINLINE void set(const typename T::value_type &value) const { internal.set(value); }
-  DEVICE_FORCEINLINE void set_at_row(const unsigned row, const typename T::value_type &value) const { internal.set_at_row(row % rows, value); }
-  DEVICE_FORCEINLINE void set_at_col(const unsigned col, const typename T::value_type &value) const { internal.set_at_col(col % cols, value); }
-  DEVICE_FORCEINLINE void set(const unsigned row, const unsigned col, const typename T::value_type &value) const { internal.set(row % rows, col % cols, value); }
+  DEVICE_FORCEINLINE void set(thread const typename T::value_type &value) const { internal.set(value); }
+  DEVICE_FORCEINLINE void set_at_row(const unsigned row, thread const typename T::value_type &value) const { internal.set_at_row(row % rows, value); }
+  DEVICE_FORCEINLINE void set_at_col(const unsigned col, thread const typename T::value_type &value) const { internal.set_at_col(col % cols, value); }
+  DEVICE_FORCEINLINE void set(const unsigned row, const unsigned col, thread const typename T::value_type &value) const { internal.set(row % rows, col % cols, value); }
 };
 
 } // namespace memory

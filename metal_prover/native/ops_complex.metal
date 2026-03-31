@@ -40,9 +40,9 @@ DEVICE_FORCEINLINE void batch_inv_registers(const thread T *inputs, thread T *fw
 }
 
 template <typename T> struct InvBatch {};
-template <> struct InvBatch<bf> { static constexpr unsigned INV_BATCH = 20; };
-template <> struct InvBatch<e2> { static constexpr unsigned INV_BATCH = 5; };
-template <> struct InvBatch<e4> { static constexpr unsigned INV_BATCH = 3; };
+template <> struct InvBatch<bf> { enum : unsigned { INV_BATCH = 20 }; };
+template <> struct InvBatch<e2> { enum : unsigned { INV_BATCH = 5 }; };
+template <> struct InvBatch<e4> { enum : unsigned { INV_BATCH = 3 }; };
 
 // Get powers kernels
 kernel void ab_get_powers_by_val_bf_kernel(constant bf &base [[buffer(0)]],

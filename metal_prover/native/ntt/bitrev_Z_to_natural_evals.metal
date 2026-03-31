@@ -109,7 +109,7 @@ DEVICE_FORCEINLINE void bitrev_Z_to_natural_coset_evals_initial_stages_warp(
 
     // Warp-level butterfly stages
     unsigned lane_mask = 1;
-    e2f *twiddles_this_stage = twiddle_cache;
+    threadgroup e2f *twiddles_this_stage = twiddle_cache;
     unsigned num_twiddles_this_stage = VALS_PER_WARP >> 1;
     for (unsigned stage = 0; stage < 6; stage++) {
       for (unsigned i = 0; i < PAIRS_PER_THREAD; i++) {
@@ -151,6 +151,7 @@ DEVICE_FORCEINLINE void bitrev_Z_to_natural_coset_evals_initial_stages_warp(
 }
 
 // 8-stage warp kernel
+[[max_total_threads_per_threadgroup(128)]]
 kernel void ab_bitrev_Z_to_natural_coset_evals_initial_8_stages_warp(
     device const bf *gmem_in [[buffer(0)]],
     device bf *gmem_out [[buffer(1)]],
@@ -182,8 +183,7 @@ kernel void ab_bitrev_Z_to_natural_coset_evals_initial_8_stages_warp(
     // Threadgroup memory and thread indices
     threadgroup e2f *smem [[threadgroup(0)]],
     uint tid [[thread_index_in_threadgroup]],
-    uint2 gid_2d [[threadgroup_position_in_grid]])
-    [[max_total_threads_per_threadgroup(128)]] {
+    uint2 gid_2d [[threadgroup_position_in_grid]]) {
 
   const unsigned lane_id = tid & 31;
   const unsigned warp_id = tid >> 5;
@@ -200,6 +200,7 @@ kernel void ab_bitrev_Z_to_natural_coset_evals_initial_8_stages_warp(
 }
 
 // 7-stage warp kernel
+[[max_total_threads_per_threadgroup(128)]]
 kernel void ab_bitrev_Z_to_natural_coset_evals_initial_7_stages_warp(
     device const bf *gmem_in [[buffer(0)]],
     device bf *gmem_out [[buffer(1)]],
@@ -228,8 +229,7 @@ kernel void ab_bitrev_Z_to_natural_coset_evals_initial_7_stages_warp(
     constant unsigned &powers_coarsest_mask [[buffer(24)]],
     threadgroup e2f *smem [[threadgroup(0)]],
     uint tid [[thread_index_in_threadgroup]],
-    uint2 gid_2d [[threadgroup_position_in_grid]])
-    [[max_total_threads_per_threadgroup(128)]] {
+    uint2 gid_2d [[threadgroup_position_in_grid]]) {
 
   const unsigned lane_id = tid & 31;
   const unsigned warp_id = tid >> 5;

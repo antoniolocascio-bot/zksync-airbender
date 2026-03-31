@@ -19,8 +19,8 @@ using bf = base_field;
 using e2 = ext2_field;
 using e4 = ext4_field;
 
-constexpr unsigned MAX_MEMORY_COLS = 256;
-constexpr unsigned DOES_NOT_NEED_Z_OMEGA = 0xFFFFFFFF;
+constant constexpr unsigned MAX_MEMORY_COLS = 256;
+constant constexpr unsigned DOES_NOT_NEED_Z_OMEGA = 0xFFFFFFFF;
 
 struct ColIdxsToChallengeIdxsMap {
   unsigned map[MAX_MEMORY_COLS];
@@ -31,7 +31,20 @@ struct ChallengesTimesEvalsSums {
   e4 at_z_omega_sum_neg;
 };
 
+// Packs scalar config params to stay within Metal's 31-buffer limit
+struct Stage4Config {
+  unsigned num_setup_cols;
+  unsigned num_witness_cols;
+  unsigned num_memory_cols;
+  unsigned num_stage_2_bf_cols;
+  unsigned num_stage_2_e4_cols;
+  unsigned stage_2_memory_grand_product_offset;
+  unsigned log_n;
+  bool bit_reversed;
+};
+
 // DEEP denominator at z kernel
+[[max_total_threads_per_threadgroup(128)]]
 kernel void ab_deep_denom_at_z_kernel(device e4 *denom_at_z [[buffer(0)]],
                                        device const e4 *z_ref [[buffer(1)]],
                                        constant unsigned &log_n [[buffer(2)]],
@@ -46,8 +59,7 @@ kernel void ab_deep_denom_at_z_kernel(device e4 *denom_at_z [[buffer(0)]],
                                        device const e2 *coarsest_values [[buffer(10)]],
                                        constant unsigned &coarsest_mask [[buffer(11)]],
                                        uint gid [[thread_position_in_grid]],
-                                       uint grid_size [[threads_per_grid]])
-  [[max_total_threads_per_threadgroup(128)]] {
+                                       uint grid_size [[threads_per_grid]]) {
   constexpr unsigned INV_BATCH = 3; // InvBatch<e4>::INV_BATCH
 
   const unsigned n = 1u << log_n;
@@ -103,6 +115,7 @@ kernel void ab_deep_denom_at_z_kernel(device e4 *denom_at_z [[buffer(0)]],
 }
 
 // DEEP quotient kernel
+[[max_total_threads_per_threadgroup(512)]]
 kernel void ab_deep_quotient_kernel(
     device const bf *setup_cols [[buffer(0)]],
     constant size_t &setup_stride [[buffer(1)]],
@@ -131,18 +144,16 @@ kernel void ab_deep_quotient_kernel(
     device const ChallengesTimesEvalsSums *sums_ref [[buffer(24)]],
     device bf *quotient [[buffer(25)]],
     constant size_t &quotient_stride [[buffer(26)]],
-    constant unsigned &num_setup_cols [[buffer(27)]],
-    constant unsigned &num_witness_cols [[buffer(28)]],
-    constant unsigned &num_memory_cols [[buffer(29)]],
-    constant unsigned &num_stage_2_bf_cols [[buffer(30)]],
-    constant unsigned &num_stage_2_e4_cols [[buffer(31)]],
-    // Use a separate constant buffer for the remaining params
-    // to avoid exceeding the buffer limit
-    constant unsigned &stage_2_memory_grand_product_offset [[buffer(32)]],
-    constant unsigned &log_n [[buffer(33)]],
-    constant bool &bit_reversed [[buffer(34)]],
-    uint gid [[thread_position_in_grid]])
-  [[max_total_threads_per_threadgroup(512)]] {
+    constant Stage4Config &cfg [[buffer(27)]],
+    uint gid [[thread_position_in_grid]]) {
+  const unsigned num_setup_cols = cfg.num_setup_cols;
+  const unsigned num_witness_cols = cfg.num_witness_cols;
+  const unsigned num_memory_cols = cfg.num_memory_cols;
+  const unsigned num_stage_2_bf_cols = cfg.num_stage_2_bf_cols;
+  const unsigned num_stage_2_e4_cols = cfg.num_stage_2_e4_cols;
+  const unsigned stage_2_memory_grand_product_offset = cfg.stage_2_memory_grand_product_offset;
+  const unsigned log_n = cfg.log_n;
+  const bool bit_reversed = cfg.bit_reversed;
   const unsigned n = 1u << log_n;
   if (gid >= n)
     return;

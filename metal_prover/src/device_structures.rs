@@ -131,7 +131,10 @@ impl<T> MetalBuffer<T> {
     }
 
     pub fn as_mut_slice(&mut self) -> &mut [T] {
-        unsafe { slice::from_raw_parts_mut(self.as_mut_ptr(), self.len) }
+        // Access buffer.contents() directly to avoid recursive trait method dispatch:
+        // self.as_mut_ptr() from &mut self resolves to MetalMatrixChunkMutImpl::as_mut_ptr
+        // which calls as_raw_mut_ptr() which calls as_mut_ptr() → infinite recursion.
+        unsafe { slice::from_raw_parts_mut(self.buffer.contents() as *mut T, self.len) }
     }
 
     pub fn metal_buffer(&self) -> &MTLBuffer {
@@ -147,25 +150,35 @@ impl<T> MetalBuffer<T> {
     }
 
     /// Copy data from a host slice into this buffer.
-    pub fn copy_from_slice(&mut self, src: &[T]) {
-        assert_eq!(src.len(), self.len, "source slice length mismatch");
+    pub fn load_from_host(&mut self, src: &[T]) {
+        let n = self.len;
+        assert_eq!(src.len(), n, "source slice length mismatch");
+        let dst = self.buffer.contents() as *mut T;
+        let src_ptr = src.as_ptr();
         unsafe {
-            std::ptr::copy_nonoverlapping(src.as_ptr(), self.as_mut_ptr(), self.len);
+            std::ptr::copy_nonoverlapping(src_ptr, dst, n);
         }
     }
 
     /// Copy data from this buffer into a host slice.
-    pub fn copy_to_slice(&self, dst: &mut [T]) {
+    pub fn store_to_host(&self, dst: &mut [T]) {
         assert_eq!(dst.len(), self.len, "destination slice length mismatch");
         unsafe {
             std::ptr::copy_nonoverlapping(self.as_ptr(), dst.as_mut_ptr(), self.len);
         }
     }
 
+    /// Copy data from a host slice into this buffer (alias for load_from_host).
+    #[allow(dead_code)]
+    pub fn copy_from_slice_host(&mut self, src: &[T]) {
+        self.load_from_host(src);
+    }
+
     /// Zero-initialize the entire buffer.
     pub fn zero_fill(&mut self) {
         unsafe {
-            std::ptr::write_bytes(self.as_mut_ptr(), 0, self.len);
+            // Use buffer.contents() directly to avoid recursive trait method dispatch
+            std::ptr::write_bytes(self.buffer.contents() as *mut T, 0, self.len);
         }
     }
 
@@ -406,7 +419,11 @@ impl<T> MetalMatrixChunkImpl<T> for MetalBuffer<T> {
 
 impl<T> MetalMatrixChunkMutImpl<T> for MetalBuffer<T> {
     fn as_raw_mut_ptr(&mut self) -> *mut T {
-        self.as_mut_ptr()
+        // Access buffer.contents() directly to avoid recursive trait method dispatch:
+        // self.as_mut_ptr() from &mut self would resolve to MetalMatrixChunkMutImpl::as_mut_ptr
+        // (which takes &mut self, matching exactly) rather than the inherent as_mut_ptr(&self).
+        // That trait default calls as_raw_mut_ptr() → infinite recursion.
+        self.buffer.contents() as *mut T
     }
 }
 

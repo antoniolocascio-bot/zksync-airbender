@@ -1,3 +1,4 @@
+#pragma once
 #include <metal_stdlib>
 using namespace metal;
 
@@ -11,8 +12,7 @@ namespace airbender {
 namespace field {
 
 struct base_field {
-  static constexpr uint32_t ORDER = (1u << 31) - 1;
-  static constexpr uint32_t MINUS_ONE = ORDER - 1;
+  enum : uint32_t { ORDER = (1u << 31) - 1, MINUS_ONE = ORDER - 1 };
   uint32_t limb{};
   static constexpr DEVICE_FORCEINLINE base_field zero() { return base_field(0); }
   static constexpr DEVICE_FORCEINLINE base_field one() { return base_field(1); }

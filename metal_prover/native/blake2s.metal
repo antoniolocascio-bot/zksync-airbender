@@ -13,8 +13,8 @@ typedef uint64_t u64;
 typedef base_field bf;
 
 #define LOG_WARP_SIZE 5
-constexpr unsigned WARP_SIZE = 1 << LOG_WARP_SIZE;
-constexpr unsigned WARP_MASK = WARP_SIZE - 1;
+constant constexpr unsigned WARP_SIZE = 1 << LOG_WARP_SIZE;
+constant constexpr unsigned WARP_MASK = WARP_SIZE - 1;
 
 #define ROTR32(x, y) (((x) >> (y)) ^ ((x) << (32 - (y))))
 
@@ -28,13 +28,13 @@ constexpr unsigned WARP_MASK = WARP_SIZE - 1;
   v[c] = v[c] + v[d];          \
   v[b] = ROTR32(v[b] ^ v[c], 7);
 
-constexpr bool USE_REDUCED_ROUNDS = true;
-constexpr unsigned FULL_ROUNDS = 10;
-constexpr unsigned REDUCED_ROUNDS = 7;
-constexpr unsigned ROUNDS = USE_REDUCED_ROUNDS ? REDUCED_ROUNDS : FULL_ROUNDS;
-constexpr unsigned STATE_SIZE = 8;
-constexpr unsigned BLOCK_SIZE = 16;
-constexpr u32 IV_0_TWIST = 0x01010000 ^ 32;
+constant constexpr bool USE_REDUCED_ROUNDS = true;
+constant constexpr unsigned FULL_ROUNDS = 10;
+constant constexpr unsigned REDUCED_ROUNDS = 7;
+constant constexpr unsigned ROUNDS = USE_REDUCED_ROUNDS ? REDUCED_ROUNDS : FULL_ROUNDS;
+constant constexpr unsigned STATE_SIZE = 8;
+constant constexpr unsigned BLOCK_SIZE = 16;
+constant constexpr u32 IV_0_TWIST = 0x01010000 ^ 32;
 
 constant u32 IV[STATE_SIZE] = {0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A, 0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19};
 
@@ -304,7 +304,8 @@ kernel void ab_blake2s_pow_kernel(device const u64 *seed [[buffer(0)]],
       if (expected_high == 0xFFFFFFFF) {
         atomic_store_explicit(result_low, nonce_low, memory_order_relaxed);
       }
-      atomic_thread_fence(mem_flags::mem_device);
+      // Memory fence to ensure result visibility across threadgroups
+      threadgroup_barrier(mem_flags::mem_device);
     }
     // Check if someone already found a result
     u32 current_high = atomic_load_explicit(result_high, memory_order_relaxed);

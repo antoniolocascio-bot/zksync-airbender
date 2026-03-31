@@ -32,7 +32,7 @@ impl SetupPrecomputations {
         let mut setup_columns = Vec::with_capacity(setup_columns_host.len());
         for col_host in setup_columns_host {
             let mut buf = MetalBuffer::<BF>::new(&ctx.device, col_host.len());
-            buf.copy_from_slice(col_host);
+            buf.load_from_host(col_host);
             setup_columns.push(buf);
         }
 

@@ -10,13 +10,13 @@ namespace monolith {
 
 typedef base_field bf;
 
-constexpr unsigned WARP_SIZE = 32;
-constexpr unsigned CAPACITY = 8;
-constexpr unsigned RATE = 8;
-constexpr unsigned WIDTH = CAPACITY + RATE;
-constexpr unsigned NUM_ROUNDS = 6;
-constexpr unsigned NUM_FULL_ROUNDS = NUM_ROUNDS - 1;
-constexpr unsigned NUM_BARS = 8;
+constant constexpr unsigned WARP_SIZE = 32;
+constant constexpr unsigned CAPACITY = 8;
+constant constexpr unsigned RATE = 8;
+constant constexpr unsigned WIDTH = CAPACITY + RATE;
+constant constexpr unsigned NUM_ROUNDS = 6;
+constant constexpr unsigned NUM_FULL_ROUNDS = NUM_ROUNDS - 1;
+constant constexpr unsigned NUM_BARS = 8;
 
 constant uint32_t ROUND_CONSTANTS[NUM_FULL_ROUNDS][WIDTH] = {
     {1821280327, 1805192324, 127749067, 534494027, 504066389, 661859220, 1964605566, 11087311, 1178584041, 412585466, 2078905810, 549234502, 1181028407,
@@ -156,6 +156,7 @@ DEVICE_FORCEINLINE void permutation_mt(thread bf &state, const unsigned tid, con
 }
 
 // Single-threaded leaves kernel
+[[max_total_threads_per_threadgroup(128)]]
 kernel void ab_monolith_leaves_st_kernel(device const bf *values [[buffer(0)]],
                                           device bf *results [[buffer(1)]],
                                           constant unsigned &log_rows_count [[buffer(2)]],
@@ -164,8 +165,7 @@ kernel void ab_monolith_leaves_st_kernel(device const bf *values [[buffer(0)]],
                                           threadgroup uint8_t *bar_lookup [[threadgroup(0)]],
                                           uint gid [[thread_position_in_grid]],
                                           uint tid [[thread_index_in_threadgroup]],
-                                          uint tpg [[threads_per_threadgroup]])
-  [[max_total_threads_per_threadgroup(128)]] {
+                                          uint tpg [[threads_per_threadgroup]]) {
   initialize_lookup(bar_lookup, tid, tpg);
   if (gid >= count) return;
 
@@ -196,14 +196,14 @@ kernel void ab_monolith_leaves_st_kernel(device const bf *values [[buffer(0)]],
 }
 
 // Single-threaded nodes kernel
+[[max_total_threads_per_threadgroup(128)]]
 kernel void ab_monolith_nodes_st_kernel(device const bf *values [[buffer(0)]],
                                          device bf *results [[buffer(1)]],
                                          constant unsigned &count [[buffer(2)]],
                                          threadgroup uint8_t *bar_lookup [[threadgroup(0)]],
                                          uint gid [[thread_position_in_grid]],
                                          uint tid [[thread_index_in_threadgroup]],
-                                         uint tpg [[threads_per_threadgroup]])
-  [[max_total_threads_per_threadgroup(128)]] {
+                                         uint tpg [[threads_per_threadgroup]]) {
   initialize_lookup(bar_lookup, tid, tpg);
   if (gid >= count) return;
 
@@ -219,6 +219,7 @@ kernel void ab_monolith_nodes_st_kernel(device const bf *values [[buffer(0)]],
 
 // Multi-threaded (SIMD-level) nodes kernel
 // Each SIMD group of WIDTH threads processes one hash
+[[max_total_threads_per_threadgroup(128)]]
 kernel void ab_monolith_nodes_mt_kernel(device const bf *values [[buffer(0)]],
                                          device bf *results [[buffer(1)]],
                                          constant unsigned &count [[buffer(2)]],
@@ -226,8 +227,7 @@ kernel void ab_monolith_nodes_mt_kernel(device const bf *values [[buffer(0)]],
                                          uint simd_lane [[thread_index_in_simdgroup]],
                                          uint simd_group [[simdgroup_index_in_threadgroup]],
                                          uint bid [[threadgroup_position_in_grid]],
-                                         uint threads_per_group [[threads_per_threadgroup]])
-  [[max_total_threads_per_threadgroup(128)]] {
+                                         uint threads_per_group [[threads_per_threadgroup]]) {
   const unsigned groups_per_block = threads_per_group / WARP_SIZE;
   // Initialize bar lookup cooperatively
   const unsigned flat_tid = simd_lane + simd_group * WARP_SIZE;

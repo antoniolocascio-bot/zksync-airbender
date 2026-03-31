@@ -67,12 +67,47 @@ impl PipelineCache {
         }
     }
 
+    /// Resolve a kernel name to its fully-qualified name in the Metal library.
+    ///
+    /// Metal shaders are organized in namespaces (e.g. `airbender::ops_simple::`).
+    /// This resolves a short name like `"ab_set_by_val_bf_kernel"` to the full
+    /// qualified name by trying known namespace prefixes.
+    fn resolve_kernel_name(&self, name: &str) -> String {
+        // If the name already contains `::` it is fully qualified -- use as-is.
+        if name.contains("::") {
+            return name.to_string();
+        }
+        // Try each known namespace prefix in order.
+        const NAMESPACES: &[&str] = &[
+            "airbender::ops_simple::",
+            "airbender::ops_complex::",
+            "airbender::ops_cub::",
+            "airbender::blake2s::",
+            "airbender::monolith::",
+            "airbender::ntt::",
+            "airbender::stage2::",
+            "airbender::stage3::",
+            "airbender::stage4::",
+        ];
+        for ns in NAMESPACES {
+            let qualified = format!("{}{}", ns, name);
+            if self.library.get_function(&qualified, None).is_ok() {
+                return qualified;
+            }
+        }
+        // Fall back to bare name; get_function will panic with a useful message.
+        name.to_string()
+    }
+
     /// Get or create a compute pipeline state for the named kernel function.
+    ///
+    /// Kernel names may be given with or without namespace prefix; this method
+    /// resolves them automatically by trying known `airbender::*` namespaces.
     ///
     /// Thread-safe: uses a RwLock so multiple readers can access cached
     /// pipelines concurrently.
     pub fn get_or_create(&self, name: &str, device: &MTLDevice) -> ComputePipelineState {
-        // Fast path: check if already cached
+        // Fast path: check if already cached (use the short name as key)
         {
             let cache = self.cache.read().unwrap();
             if let Some(pipeline) = cache.get(name) {
@@ -80,17 +115,20 @@ impl PipelineCache {
             }
         }
 
+        // Resolve the kernel name (handles bare vs. namespaced names)
+        let qualified_name = self.resolve_kernel_name(name);
+
         // Slow path: compile and insert
         let function = self
             .library
-            .get_function(name, None)
-            .unwrap_or_else(|e| panic!("Failed to find Metal function '{}': {:?}", name, e));
+            .get_function(&qualified_name, None)
+            .unwrap_or_else(|e| panic!("Failed to find Metal function '{}' (resolved from '{}'): {:?}", qualified_name, name, e));
         let pipeline = device
             .new_compute_pipeline_state_with_function(&function)
             .unwrap_or_else(|e| {
                 panic!(
                     "Failed to create compute pipeline for '{}': {:?}",
-                    name, e
+                    qualified_name, e
                 )
             });
 
@@ -139,9 +177,7 @@ impl MetalProverContext {
             Some(path) => device
                 .new_library_with_file(path)
                 .unwrap_or_else(|e| panic!("Failed to load metallib from {:?}: {:?}", path, e)),
-            None => device
-                .new_default_library()
-                .expect("No default Metal library found. Compile .metal shaders first."),
+            None => device.new_default_library(),
         };
 
         let pipeline_cache = PipelineCache::new(library);

@@ -18,6 +18,7 @@ using bf = base_field;
 using e2 = ext2_field;
 using e4 = ext4_field;
 
+[[max_total_threads_per_threadgroup(128)]]
 kernel void ab_zero_stage_2_last_row_kernel(device bf *stage_2_bf_cols [[buffer(0)]],
                                              constant size_t &bf_stride [[buffer(1)]],
                                              device bf *stage_2_e4_cols [[buffer(2)]],
@@ -25,8 +26,7 @@ kernel void ab_zero_stage_2_last_row_kernel(device bf *stage_2_bf_cols [[buffer(
                                              constant unsigned &num_stage_2_bf_cols [[buffer(4)]],
                                              constant unsigned &num_stage_2_e4_cols [[buffer(5)]],
                                              constant unsigned &log_n [[buffer(6)]],
-                                             uint gid [[thread_position_in_grid]])
-  [[max_total_threads_per_threadgroup(128)]] {
+                                             uint gid [[thread_position_in_grid]]) {
   const unsigned n = 1u << log_n;
 
   if (gid < num_stage_2_bf_cols) {
@@ -41,6 +41,7 @@ kernel void ab_zero_stage_2_last_row_kernel(device bf *stage_2_bf_cols [[buffer(
 }
 
 // Range check aggregated entry inverses and multiplicities argument
+[[max_total_threads_per_threadgroup(128)]]
 kernel void ab_range_check_aggregated_entry_invs_and_multiplicities_arg_kernel(
     device const LookupChallenges *challenges [[buffer(0)]],
     device const bf *witness_cols [[buffer(1)]],
@@ -56,8 +57,7 @@ kernel void ab_range_check_aggregated_entry_invs_and_multiplicities_arg_kernel(
     constant unsigned &num_multiplicities_cols [[buffer(11)]],
     constant unsigned &num_table_rows_tail [[buffer(12)]],
     constant unsigned &log_n [[buffer(13)]],
-    uint gid [[thread_position_in_grid]])
-  [[max_total_threads_per_threadgroup(128)]] {
+    uint gid [[thread_position_in_grid]]) {
   const unsigned n = 1u << log_n;
   if (gid >= n - 1)
     return;

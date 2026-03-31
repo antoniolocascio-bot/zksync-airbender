@@ -16,7 +16,7 @@ typedef ext4_field e4;
 // Tree-based reduction using threadgroup shared memory.
 // Two-pass approach: per-threadgroup reduce, then reduce partial results.
 
-constexpr unsigned REDUCE_BLOCK_SIZE = 256;
+constant constexpr unsigned REDUCE_BLOCK_SIZE = 256;
 
 // Per-threadgroup reduction template
 template <typename T, typename Op>
@@ -40,12 +40,13 @@ kernel void ab_reduce_add_bf_kernel(device const bf *d_in [[buffer(0)]],
                                      threadgroup bf *shared [[threadgroup(0)]],
                                      uint tid [[thread_index_in_threadgroup]],
                                      uint bid [[threadgroup_position_in_grid]],
-                                     uint threads_per_group [[threads_per_threadgroup]]) {
+                                     uint threads_per_group [[threads_per_threadgroup]],
+                                     uint num_threadgroups [[threadgroups_per_grid]]) {
   const unsigned global_idx = bid * threads_per_group + tid;
   bf val = (global_idx < (unsigned)num_items) ? d_in[global_idx] : bf::zero();
 
   // Accumulate multiple elements per thread if grid is smaller than input
-  for (unsigned idx = global_idx + threads_per_group * gridDim; idx < (unsigned)num_items; idx += threads_per_group * gridDim)
+  for (unsigned idx = global_idx + threads_per_group * num_threadgroups; idx < (unsigned)num_items; idx += threads_per_group * num_threadgroups)
     val = bf::add(val, d_in[idx]);
 
   shared[tid] = val;

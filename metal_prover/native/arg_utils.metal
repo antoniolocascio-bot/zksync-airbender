@@ -1,3 +1,4 @@
+#pragma once
 #include <metal_stdlib>
 using namespace metal;
 
@@ -16,14 +17,14 @@ typedef base_field bf;
 typedef ext2_field e2;
 typedef ext4_field e4;
 
-constexpr unsigned NUM_DELEGATION_ARGUMENT_KEY_PARTS = 4;
+constant constexpr unsigned NUM_DELEGATION_ARGUMENT_KEY_PARTS = 4;
 
 struct DelegationChallenges {
   e4 linearization_challenges[NUM_DELEGATION_ARGUMENT_KEY_PARTS - 1];
   e4 gamma;
 };
 
-constexpr unsigned NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES = 3;
+constant constexpr unsigned NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES = 3;
 
 struct MachineStateChallenges {
   e4 linearization_challenges[NUM_MACHINE_STATE_LINEARIZATION_CHALLENGES];
@@ -48,16 +49,16 @@ struct DelegationProcessingMetadata {
   bool has_abi_mem_offset_high;
 };
 
-constexpr unsigned NUM_LOOKUP_ARGUMENT_KEY_PARTS = 4;
+constant constexpr unsigned NUM_LOOKUP_ARGUMENT_KEY_PARTS = 4;
 
 struct LookupChallenges {
   e4 linearization_challenges[NUM_LOOKUP_ARGUMENT_KEY_PARTS - 1];
   e4 gamma;
 };
 
-constexpr unsigned REGISTER_SIZE = 2;
-constexpr unsigned EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_WIDTH = 2 + 1 + 1 + 1 + 1 + REGISTER_SIZE + 1 + 1;
-constexpr unsigned EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES = EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_WIDTH - 1;
+constant constexpr unsigned REGISTER_SIZE = 2;
+constant constexpr unsigned EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_WIDTH = 2 + 1 + 1 + 1 + 1 + REGISTER_SIZE + 1 + 1;
+constant constexpr unsigned EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES = EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_WIDTH - 1;
 
 struct DecoderTableChallenges {
   e4 linearization_challenges[EXECUTOR_FAMILY_CIRCUIT_DECODER_TABLE_LINEARIZATION_CHALLENGES];
@@ -85,7 +86,7 @@ struct RangeCheckArgsLayout {
   unsigned e4_args_start;
 };
 
-constexpr unsigned NUM_STATE_LINKAGE_CONSTRAINTS = 2;
+constant constexpr unsigned NUM_STATE_LINKAGE_CONSTRAINTS = 2;
 
 struct StateLinkageConstraints {
   unsigned srcs[NUM_STATE_LINKAGE_CONSTRAINTS];
@@ -103,10 +104,10 @@ struct MemoryChallenges {
   e4 gamma;
 };
 
-constexpr unsigned MAX_EXPRESSION_PAIRS = 84;
-constexpr unsigned MAX_EXPRESSIONS = 2 * MAX_EXPRESSION_PAIRS;
-constexpr unsigned MAX_TERMS_PER_EXPRESSION = 4;
-constexpr unsigned MAX_EXPRESSION_TERMS = MAX_TERMS_PER_EXPRESSION * MAX_EXPRESSIONS;
+constant constexpr unsigned MAX_EXPRESSION_PAIRS = 84;
+constant constexpr unsigned MAX_EXPRESSIONS = 2 * MAX_EXPRESSION_PAIRS;
+constant constexpr unsigned MAX_TERMS_PER_EXPRESSION = 4;
+constant constexpr unsigned MAX_EXPRESSION_TERMS = MAX_TERMS_PER_EXPRESSION * MAX_EXPRESSIONS;
 
 struct TEMPORARYFlattenedLookupExpressionsLayout {
   unsigned coeffs[MAX_EXPRESSION_TERMS];
@@ -132,9 +133,9 @@ struct FlattenedLookupExpressionsLayout {
   bool timestamp_constant_terms_are_zero;
 };
 
-constexpr unsigned MAX_EXPRESSION_PAIRS_FOR_SHUFFLE_RAM = 4;
-constexpr unsigned MAX_EXPRESSIONS_FOR_SHUFFLE_RAM = 2 * MAX_EXPRESSION_PAIRS_FOR_SHUFFLE_RAM;
-constexpr unsigned MAX_EXPRESSION_TERMS_FOR_SHUFFLE_RAM = MAX_TERMS_PER_EXPRESSION * MAX_EXPRESSIONS_FOR_SHUFFLE_RAM;
+constant constexpr unsigned MAX_EXPRESSION_PAIRS_FOR_SHUFFLE_RAM = 4;
+constant constexpr unsigned MAX_EXPRESSIONS_FOR_SHUFFLE_RAM = 2 * MAX_EXPRESSION_PAIRS_FOR_SHUFFLE_RAM;
+constant constexpr unsigned MAX_EXPRESSION_TERMS_FOR_SHUFFLE_RAM = MAX_TERMS_PER_EXPRESSION * MAX_EXPRESSIONS_FOR_SHUFFLE_RAM;
 
 struct FlattenedLookupExpressionsForShuffleRamLayout {
   unsigned coeffs[MAX_EXPRESSION_TERMS_FOR_SHUFFLE_RAM];
@@ -147,11 +148,11 @@ struct FlattenedLookupExpressionsForShuffleRamLayout {
 };
 
 // Column type encoding in u16 col index
-constexpr unsigned COL_TYPE_MASK = 3 << 14;
-constexpr unsigned COL_IDX_MASK = (1 << 14) - 1;
-constexpr unsigned COL_TYPE_WITNESS = 0;
-constexpr unsigned COL_TYPE_MEMORY = 1 << 14;
-constexpr unsigned COL_TYPE_SETUP = 1 << 15;
+constant constexpr unsigned COL_TYPE_MASK = 3 << 14;
+constant constexpr unsigned COL_IDX_MASK = (1 << 14) - 1;
+constant constexpr unsigned COL_TYPE_WITNESS = 0;
+constant constexpr unsigned COL_TYPE_MEMORY = 1 << 14;
+constant constexpr unsigned COL_TYPE_SETUP = 1 << 15;
 
 DEVICE_FORCEINLINE bf get_witness_or_memory(const unsigned col_idx,
                                              const device bf *witness_ptr, const size_t witness_stride,
@@ -202,7 +203,7 @@ struct LazyInitTeardownLayout {
   unsigned e4_arg_col;
 };
 
-constexpr unsigned MAX_LAZY_INIT_TEARDOWN_SETS = 16;
+constant constexpr unsigned MAX_LAZY_INIT_TEARDOWN_SETS = 16;
 
 struct LazyInitTeardownLayouts {
   LazyInitTeardownLayout layouts[MAX_LAZY_INIT_TEARDOWN_SETS];
@@ -226,7 +227,7 @@ struct MaskArgLayout {
   bool process_mask;
 };
 
-constexpr unsigned MAX_SHUFFLE_RAM_ACCESSES = 3;
+constant constexpr unsigned MAX_SHUFFLE_RAM_ACCESSES = 3;
 
 struct ShuffleRamAccess {
   unsigned address_start;
@@ -265,8 +266,8 @@ struct IndirectAccess {
   bool has_write;
 };
 
-constexpr unsigned MAX_REGISTER_ACCESSES = 4;
-constexpr unsigned MAX_INDIRECT_ACCESSES = 40;
+constant constexpr unsigned MAX_REGISTER_ACCESSES = 4;
+constant constexpr unsigned MAX_INDIRECT_ACCESSES = 40;
 
 struct RegisterAndIndirectAccesses {
   RegisterAccess register_accesses[MAX_REGISTER_ACCESSES];

@@ -588,11 +588,11 @@ const fn get_num_foldings<const DOMAIN_SIZE: usize>() -> usize {
 
 fn get_security_config<const DOMAIN_SIZE: usize>() -> ProofSecurityConfig
 where
-    [(); get_num_foldings::<DOMAIN_SIZE>()]:,
+    [(); get_num_foldings::<{ DOMAIN_SIZE }>()]:,
 {
     assert!(DOMAIN_SIZE.is_power_of_two());
     let config = verifier_common::SizedProofSecurityConfig::<{
-        get_num_foldings::<DOMAIN_SIZE>()
+        get_num_foldings::<{ DOMAIN_SIZE }>()
     }>::worst_case_config();
     config.for_prover()
 }

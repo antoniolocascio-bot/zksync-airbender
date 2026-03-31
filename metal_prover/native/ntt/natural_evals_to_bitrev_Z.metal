@@ -57,7 +57,7 @@ DEVICE_FORCEINLINE void evals_to_Z_final_stages_warp(
 
   // Load inverse twiddles cooperatively
   {
-    e2f *tc = twiddle_cache;
+    threadgroup e2f *tc = twiddle_cache;
     unsigned num_twiddles = VALS_PER_WARP >> 1;
     unsigned exchg_region_offset = gmem_offset >> 1;
     for (unsigned stage = 0; stage < LOG_VALS_PER_THREAD; stage++) {
@@ -95,7 +95,7 @@ DEVICE_FORCEINLINE void evals_to_Z_final_stages_warp(
     }
 
     // Thread-local DIT stages (reverse of DIF)
-    e2f *twiddles_this_stage = twiddle_cache + VALS_PER_WARP - 2;
+    threadgroup e2f *twiddles_this_stage = twiddle_cache + VALS_PER_WARP - 2;
     unsigned num_twiddles_this_stage = 1;
     for (unsigned i = 0; i < LOG_VALS_PER_THREAD - 1; i++) {
       for (unsigned j = 0; j < (1u << i); j++) {
@@ -159,6 +159,7 @@ DEVICE_FORCEINLINE void evals_to_Z_final_stages_warp(
 }
 
 // Main domain 8-stage final warp kernel
+[[max_total_threads_per_threadgroup(128)]]
 kernel void ab_main_domain_evals_to_Z_final_8_stages_warp(
     device const bf *gmem_in [[buffer(0)]],
     device bf *gmem_out [[buffer(1)]],
@@ -186,8 +187,7 @@ kernel void ab_main_domain_evals_to_Z_final_8_stages_warp(
     device const bf *inv_sizes [[buffer(23)]],
     threadgroup e2f *smem [[threadgroup(0)]],
     uint tid [[thread_index_in_threadgroup]],
-    uint2 gid_2d [[threadgroup_position_in_grid]])
-    [[max_total_threads_per_threadgroup(128)]] {
+    uint2 gid_2d [[threadgroup_position_in_grid]]) {
 
   const unsigned lane_id = tid & 31;
   const unsigned warp_id = tid >> 5;
@@ -203,6 +203,7 @@ kernel void ab_main_domain_evals_to_Z_final_8_stages_warp(
 }
 
 // Coset 8-stage final warp kernel
+[[max_total_threads_per_threadgroup(128)]]
 kernel void ab_coset_evals_to_Z_final_8_stages_warp(
     device const bf *gmem_in [[buffer(0)]],
     device bf *gmem_out [[buffer(1)]],
@@ -230,8 +231,7 @@ kernel void ab_coset_evals_to_Z_final_8_stages_warp(
     device const bf *inv_sizes [[buffer(23)]],
     threadgroup e2f *smem [[threadgroup(0)]],
     uint tid [[thread_index_in_threadgroup]],
-    uint2 gid_2d [[threadgroup_position_in_grid]])
-    [[max_total_threads_per_threadgroup(128)]] {
+    uint2 gid_2d [[threadgroup_position_in_grid]]) {
 
   const unsigned lane_id = tid & 31;
   const unsigned warp_id = tid >> 5;

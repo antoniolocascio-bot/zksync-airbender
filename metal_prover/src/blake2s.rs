@@ -33,9 +33,9 @@ fn set_buffer(
 
 /// Sets a plain value as bytes at a given buffer index.
 fn set_bytes<T: Sized>(encoder: &ComputeCommandEncoderRef, value: &T, index: u64) {
-    let ptr = value as *const T as *const u8;
-    let len = std::mem::size_of::<T>();
-    encoder.set_bytes(index, unsafe { std::slice::from_raw_parts(ptr, len) }, len as u64);
+    let ptr = value as *const T as *const std::ffi::c_void;
+    let len = std::mem::size_of::<T>() as u64;
+    encoder.set_bytes(index, len, ptr);
 }
 
 // ---------------------------------------------------------------------------
@@ -74,7 +74,7 @@ pub fn launch_leaves_kernel(
     set_bytes(&encoder, &cols_count, 3);
     set_bytes(&encoder, &count_u32, 4);
 
-    encoder.dispatch_threadgroups(grid_dim, block_dim);
+    encoder.dispatch_thread_groups(grid_dim, block_dim);
     encoder.end_encoding();
     command_buffer.commit();
     command_buffer.wait_until_completed();
@@ -120,13 +120,50 @@ pub fn launch_nodes_kernel(
     set_buffer(&encoder, results.metal_buffer(), 0, 1);
     set_bytes(&encoder, &count, 2);
 
-    encoder.dispatch_threadgroups(grid_dim, block_dim);
+    encoder.dispatch_thread_groups(grid_dim, block_dim);
     encoder.end_encoding();
     command_buffer.commit();
     command_buffer.wait_until_completed();
 }
 
-/// Recursively build merkle tree node layers.
+/// Dispatch one layer of the nodes kernel with explicit byte offsets.
+///
+/// Reads `2 * count_out` consecutive `Digest` values starting at `values_byte_offset`
+/// in `values_buf`, and writes `count_out` parent digests at `results_byte_offset` in
+/// `results_buf`.  The two buffers may be the same (valid for in-place tree building).
+fn dispatch_nodes_layer(
+    values_buf: &MTLBuffer,
+    values_byte_offset: u64,
+    results_buf: &MTLBuffer,
+    results_byte_offset: u64,
+    count_out: u32,
+    ctx: &MetalProverContext,
+) {
+    let (grid_dim, block_dim) = get_grid_block_dims_for_threads_count(WARP_SIZE * 4, count_out);
+    let pipeline = ctx.get_pipeline("ab_blake2s_nodes_kernel");
+    let command_buffer = ctx.command_queue.new_command_buffer();
+    let encoder = command_buffer.new_compute_command_encoder();
+    encoder.set_compute_pipeline_state(&pipeline);
+    encoder.set_buffer(0, Some(values_buf), values_byte_offset);
+    encoder.set_buffer(1, Some(results_buf), results_byte_offset);
+    set_bytes(&encoder, &count_out, 2);
+    encoder.dispatch_thread_groups(grid_dim, block_dim);
+    encoder.end_encoding();
+    command_buffer.commit();
+    command_buffer.wait_until_completed();
+}
+
+/// Build merkle tree node layers.
+///
+/// Tree node layout mirrors the CUDA implementation:
+///   `values`  (size n) → `results[0..n/2]`       (layer 1)
+///   `results[0..n/2]` → `results[n/2..3n/4]`      (layer 2)
+///   …
+/// The root ends up at the last occupied position in `results`.
+///
+/// `values` and `results` must both have the same power-of-two length n.
+/// Metal `set_buffer` byte-offset support lets both point into the same underlying
+/// MTLBuffer (which is required by `build_merkle_tree`).
 pub fn build_merkle_tree_nodes(
     values: &MetalBuffer<Digest>,
     results: &mut MetalBuffer<Digest>,
@@ -136,30 +173,40 @@ pub fn build_merkle_tree_nodes(
     if layers_count == 0 {
         return;
     }
-    let values_len = values.len();
-    let results_len = results.len();
-    assert!(values_len.is_power_of_two());
-    assert_eq!(values_len, results_len);
+    let n = values.len();
+    assert!(n.is_power_of_two());
+    assert_eq!(n, results.len());
 
-    // For the first layer, hash pairs from `values` into the first half of `results`.
-    // Then recursively process remaining layers using results as both input and output.
-    //
-    // Since Metal unified memory allows us to read/write the same buffer,
-    // we split results into two halves: nodes_out and nodes_remaining.
-    // However, MetalBuffer cannot be split into sub-buffers easily,
-    // so we dispatch layer by layer using offsets.
-    //
-    // For now, we implement a simplified version that processes one layer at a time
-    // using temporary buffers. A production implementation would use buffer offsets.
+    const DIGEST_BYTES: u64 = std::mem::size_of::<Digest>() as u64;
+    let results_buf = results.metal_buffer().clone();
+    // Borrow values MTLBuffer for the first layer; subsequent layers read from results.
+    let values_buf = values.metal_buffer().clone();
 
-    // TODO: Implement multi-layer node building with proper buffer offset management.
-    // This requires Mac testing to validate MTLBuffer offset handling.
-    let _ = values;
-    let _ = results;
-    let _ = layers_count;
+    // Layer 0: hash values[0..n] → results[0..n/2]
+    // Layer k>0: src = results at prev dst_off, dst = results at new dst_off
+    let mut use_values_buf = true; // first layer sources from `values`, not `results`
+    let mut src_off: u64 = 0;
+    let mut dst_off: u64 = 0;
+    let mut count_in = n;
+
+    for _ in 0..layers_count {
+        let count_out = (count_in / 2) as u32;
+        let src = if use_values_buf { &values_buf } else { &results_buf };
+        dispatch_nodes_layer(src, src_off, &results_buf, dst_off, count_out, ctx);
+        use_values_buf = false; // all layers after the first read from results
+        src_off = dst_off;
+        dst_off += count_out as u64 * DIGEST_BYTES;
+        count_in /= 2;
+    }
 }
 
 /// Build a complete merkle tree: leaves + all node layers.
+///
+/// `results` layout (size = 2 × leaves_count):
+///   `[0, leaves_count)` — leaf hashes (one per `1 << log_rows_per_hash` rows of `values`)
+///   `[leaves_count, 2×leaves_count)` — packed node layers (layer 1 first, root last)
+///
+/// The tree cap can be extracted with `merkle_tree_cap(results.as_slice(), log_cap)`.
 pub fn build_merkle_tree(
     values: &MetalBuffer<BF>,
     results: &mut MetalBuffer<Digest>,
@@ -176,13 +223,51 @@ pub fn build_merkle_tree(
     assert!(1 << (layers_count - 1) <= leaves_count);
     assert_eq!(values_len % leaves_count, 0);
 
-    // Build leaves into the first half of results.
-    // Then build node layers in the second half.
-    // This requires splitting the results buffer.
-    //
-    // TODO: Implement with proper buffer splitting for leaf/node regions.
-    // Requires Mac testing.
-    let _ = bit_reverse_leaves;
+    const DIGEST_BYTES: u64 = std::mem::size_of::<Digest>() as u64;
+
+    // Build leaf hashes into a temporary buffer then copy to results[0..leaves_count].
+    // (Using a temp avoids needing an offset-aware leaves kernel.)
+    let mut leaves_tmp = MetalBuffer::<Digest>::new(&ctx.device, leaves_count);
+    build_merkle_tree_leaves(values, &mut leaves_tmp, log_rows_per_hash, ctx);
+
+    if bit_reverse_leaves {
+        // TODO: implement bit-reversal for Digest buffers when needed.
+        // For now this is only called with bit_reverse_leaves=false in the prover.
+        unimplemented!("bit_reverse_leaves for Digest buffers not yet implemented");
+    }
+
+    // Copy leaf hashes into the first half of results (unified memory = plain memcpy).
+    let digest_size = std::mem::size_of::<Digest>();
+    unsafe {
+        std::ptr::copy_nonoverlapping(
+            leaves_tmp.as_ptr() as *const u8,
+            results.as_mut_ptr() as *mut u8,
+            leaves_count * digest_size,
+        );
+    }
+    drop(leaves_tmp);
+
+    // Build node layers into results[leaves_count..2*leaves_count].
+    // Mirrors CUDA: build_merkle_tree_nodes(leaves, nodes, layers_count-1)
+    // where leaves = results[0..L], nodes = results[L..2L].
+    // We implement this as a single iterative loop using byte offsets:
+    //   Layer 0: hash results[0..L]  → results[L..3L/2]
+    //   Layer 1: hash results[L..3L/2] → results[3L/2..7L/4]
+    //   …
+    let results_buf = results.metal_buffer().clone();
+    let nodes_start_bytes = (leaves_count as u64) * DIGEST_BYTES;
+
+    let mut src_off: u64 = 0; // reads leaves (results[0..L]) for the first node layer
+    let mut dst_off: u64 = nodes_start_bytes;
+    let mut count_in = leaves_count;
+
+    for _ in 0..(layers_count - 1) {
+        let count_out = (count_in / 2) as u32;
+        dispatch_nodes_layer(&results_buf, src_off, &results_buf, dst_off, count_out, ctx);
+        src_off = dst_off;
+        dst_off += count_out as u64 * DIGEST_BYTES;
+        count_in /= 2;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -228,7 +313,7 @@ pub fn gather_rows(
 
     let (grid_dim, block_dim) =
         get_grid_block_dims_for_threads_count(WARP_SIZE, indexes_count);
-    encoder.dispatch_threadgroups(grid_dim, block_dim);
+    encoder.dispatch_thread_groups(grid_dim, block_dim);
     encoder.end_encoding();
     command_buffer.commit();
     command_buffer.wait_until_completed();
@@ -274,7 +359,7 @@ pub fn gather_merkle_paths(
     let grid_dim_2d = MTLSize::new(grid_dim.width, layers_count as u64, 1);
     let block_dim_2d = MTLSize::new(STATE_SIZE as u64, block_dim.width, 1);
 
-    encoder.dispatch_threadgroups(grid_dim_2d, block_dim_2d);
+    encoder.dispatch_thread_groups(grid_dim_2d, block_dim_2d);
     encoder.end_encoding();
     command_buffer.commit();
     command_buffer.wait_until_completed();
@@ -328,7 +413,7 @@ pub fn gather_rows_and_merkle_paths(
 
     let grid_dim = MTLSize::new(indexes_count as u64, 1, 1);
     let block_dim = MTLSize::new(WARP_SIZE as u64, 1, 1);
-    encoder.dispatch_threadgroups(grid_dim, block_dim);
+    encoder.dispatch_thread_groups(grid_dim, block_dim);
     encoder.end_encoding();
     command_buffer.commit();
     command_buffer.wait_until_completed();
@@ -383,7 +468,7 @@ pub fn blake2s_pow(
 
     let grid_dim = MTLSize::new(num_threadgroups as u64, 1, 1);
     let block_dim = MTLSize::new(block_size as u64, 1, 1);
-    encoder.dispatch_threadgroups(grid_dim, block_dim);
+    encoder.dispatch_thread_groups(grid_dim, block_dim);
     encoder.end_encoding();
     command_buffer.commit();
     command_buffer.wait_until_completed();

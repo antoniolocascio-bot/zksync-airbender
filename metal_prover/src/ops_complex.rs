@@ -19,9 +19,9 @@ type E2 = Ext2Field;
 type E4 = Ext4Field;
 
 fn set_bytes<T: Sized>(encoder: &ComputeCommandEncoderRef, value: &T, index: u64) {
-    let ptr = value as *const T as *const u8;
-    let len = std::mem::size_of::<T>();
-    encoder.set_bytes(index, unsafe { std::slice::from_raw_parts(ptr, len) }, len as u64);
+    let ptr = value as *const T as *const std::ffi::c_void;
+    let len = std::mem::size_of::<T>() as u64;
+    encoder.set_bytes(index, len, ptr);
 }
 
 fn get_launch_dims(count: u32) -> (MTLSize, MTLSize) {
@@ -54,7 +54,7 @@ pub fn get_powers_by_val_bf(
     encoder.set_buffer(3, Some(result.metal_buffer()), 0);
     set_bytes(&encoder, &count, 4);
 
-    encoder.dispatch_threadgroups(grid_dim, block_dim);
+    encoder.dispatch_thread_groups(grid_dim, block_dim);
     encoder.end_encoding();
     command_buffer.commit();
     command_buffer.wait_until_completed();
@@ -81,7 +81,7 @@ pub fn get_powers_by_val_e2(
     encoder.set_buffer(3, Some(result.metal_buffer()), 0);
     set_bytes(&encoder, &count, 4);
 
-    encoder.dispatch_threadgroups(grid_dim, block_dim);
+    encoder.dispatch_thread_groups(grid_dim, block_dim);
     encoder.end_encoding();
     command_buffer.commit();
     command_buffer.wait_until_completed();
@@ -108,7 +108,7 @@ pub fn get_powers_by_val_e4(
     encoder.set_buffer(3, Some(result.metal_buffer()), 0);
     set_bytes(&encoder, &count, 4);
 
-    encoder.dispatch_threadgroups(grid_dim, block_dim);
+    encoder.dispatch_thread_groups(grid_dim, block_dim);
     encoder.end_encoding();
     command_buffer.commit();
     command_buffer.wait_until_completed();
@@ -143,7 +143,7 @@ pub fn batch_inv_bf(
 
     let grid = MTLSize::new(grid_dim as u64, 1, 1);
     let block = MTLSize::new(block_dim as u64, 1, 1);
-    encoder.dispatch_threadgroups(grid, block);
+    encoder.dispatch_thread_groups(grid, block);
     encoder.end_encoding();
     command_buffer.commit();
     command_buffer.wait_until_completed();
@@ -171,7 +171,7 @@ pub fn batch_inv_e2(
 
     let grid = MTLSize::new(grid_dim as u64, 1, 1);
     let block = MTLSize::new(block_dim as u64, 1, 1);
-    encoder.dispatch_threadgroups(grid, block);
+    encoder.dispatch_thread_groups(grid, block);
     encoder.end_encoding();
     command_buffer.commit();
     command_buffer.wait_until_completed();
@@ -199,7 +199,7 @@ pub fn batch_inv_e4(
 
     let grid = MTLSize::new(grid_dim as u64, 1, 1);
     let block = MTLSize::new(block_dim as u64, 1, 1);
-    encoder.dispatch_threadgroups(grid, block);
+    encoder.dispatch_thread_groups(grid, block);
     encoder.end_encoding();
     command_buffer.commit();
     command_buffer.wait_until_completed();
@@ -224,7 +224,7 @@ pub fn batch_inv_in_place_bf(values: &mut MetalBuffer<BF>, ctx: &MetalProverCont
 
     let grid = MTLSize::new(grid_dim as u64, 1, 1);
     let block = MTLSize::new(block_dim as u64, 1, 1);
-    encoder.dispatch_threadgroups(grid, block);
+    encoder.dispatch_thread_groups(grid, block);
     encoder.end_encoding();
     command_buffer.commit();
     command_buffer.wait_until_completed();
@@ -270,7 +270,7 @@ pub fn transpose_bf(
 
     let block = MTLSize::new(tile_size as u64, tiles_per_block as u64, 1);
     let grid = MTLSize::new(grid_dim_x as u64, 1, 1);
-    encoder.dispatch_threadgroups(grid, block);
+    encoder.dispatch_thread_groups(grid, block);
     encoder.end_encoding();
     command_buffer.commit();
     command_buffer.wait_until_completed();
@@ -280,58 +280,65 @@ pub fn transpose_bf(
 // bit_reverse
 // ---------------------------------------------------------------------------
 
-/// Bit-reverse the rows of a matrix (each column independently).
+/// Bit-reverse a flat buffer in-place.
+///
+/// Metal kernel: `ab_bit_reverse_naive_bf_kernel`
+/// Signature: `(device const bf *src, device bf *dst, constant size_t &stride,
+///              constant unsigned &log_count, constant unsigned &col, uint gid)`
 pub fn bit_reverse_in_place_bf(
-    values: &mut (impl MetalMatrixChunkMutImpl<BF> + ?Sized),
+    values: &mut MetalBuffer<BF>,
     ctx: &MetalProverContext,
 ) {
-    let rows = values.rows();
-    let cols = values.cols();
-    assert!(rows.is_power_of_two());
-    let log_count = rows.trailing_zeros();
+    let n = values.len();
+    assert!(n.is_power_of_two(), "bit_reverse: size must be a power of two");
+    let log_n = n.trailing_zeros();
+    let stride = n as u64; // size_t stride in elements (column stride for 1-column flat buffer)
+    let col = 0u32;
 
-    let pipeline = ctx.get_pipeline("ab_bit_reverse_bf_kernel");
+    let (grid_dim, block_dim) = get_launch_dims(n as u32);
+    let pipeline = ctx.get_pipeline("ab_bit_reverse_naive_bf_kernel");
+
     let command_buffer = ctx.command_queue.new_command_buffer();
     let encoder = command_buffer.new_compute_command_encoder();
     encoder.set_compute_pipeline_state(&pipeline);
 
-    let src_ps = values.as_ptr_and_stride();
-    let dst_ps = values.as_mut_ptr_and_stride();
-    set_bytes(&encoder, &src_ps, 0);
-    set_bytes(&encoder, &dst_ps, 1);
-    set_bytes(&encoder, &log_count, 2);
+    // In-place: src == dst
+    encoder.set_buffer(0, Some(values.metal_buffer()), 0);
+    encoder.set_buffer(1, Some(values.metal_buffer()), 0);
+    set_bytes(&encoder, &stride, 2);  // constant size_t &stride
+    set_bytes(&encoder, &log_n, 3);   // constant unsigned &log_count
+    set_bytes(&encoder, &col, 4);     // constant unsigned &col
 
-    let (mut grid_dim, block_dim) = get_launch_dims(rows as u32);
-    grid_dim.height = cols as u64;
-    encoder.dispatch_threadgroups(grid_dim, block_dim);
+    encoder.dispatch_thread_groups(grid_dim, block_dim);
     encoder.end_encoding();
     command_buffer.commit();
     command_buffer.wait_until_completed();
 }
 
-pub fn bit_reverse_in_place_e2(
-    values: &mut (impl MetalMatrixChunkMutImpl<E2> + ?Sized),
+pub fn bit_reverse_in_place_e4(
+    values: &mut MetalBuffer<E4>,
     ctx: &MetalProverContext,
 ) {
-    let rows = values.rows();
-    let cols = values.cols();
-    assert!(rows.is_power_of_two());
-    let log_count = rows.trailing_zeros();
+    let n = values.len();
+    assert!(n.is_power_of_two(), "bit_reverse: size must be a power of two");
+    let log_n = n.trailing_zeros();
+    let stride = n as u64;
+    let col = 0u32;
 
-    let pipeline = ctx.get_pipeline("ab_bit_reverse_e2_kernel");
+    let (grid_dim, block_dim) = get_launch_dims(n as u32);
+    let pipeline = ctx.get_pipeline("ab_bit_reverse_naive_e4_kernel");
+
     let command_buffer = ctx.command_queue.new_command_buffer();
     let encoder = command_buffer.new_compute_command_encoder();
     encoder.set_compute_pipeline_state(&pipeline);
 
-    let src_ps = values.as_ptr_and_stride();
-    let dst_ps = values.as_mut_ptr_and_stride();
-    set_bytes(&encoder, &src_ps, 0);
-    set_bytes(&encoder, &dst_ps, 1);
-    set_bytes(&encoder, &log_count, 2);
+    encoder.set_buffer(0, Some(values.metal_buffer()), 0);
+    encoder.set_buffer(1, Some(values.metal_buffer()), 0);
+    set_bytes(&encoder, &stride, 2);
+    set_bytes(&encoder, &log_n, 3);
+    set_bytes(&encoder, &col, 4);
 
-    let (mut grid_dim, block_dim) = get_launch_dims(rows as u32);
-    grid_dim.height = cols as u64;
-    encoder.dispatch_threadgroups(grid_dim, block_dim);
+    encoder.dispatch_thread_groups(grid_dim, block_dim);
     encoder.end_encoding();
     command_buffer.commit();
     command_buffer.wait_until_completed();
@@ -376,7 +383,7 @@ pub fn fold(
     encoder.set_buffer(6, Some(ctx.device_context.powers_of_w_coarser.metal_buffer()), 0);
     encoder.set_buffer(7, Some(ctx.device_context.powers_of_w_coarsest.metal_buffer()), 0);
 
-    encoder.dispatch_threadgroups(grid_dim, block_dim);
+    encoder.dispatch_thread_groups(grid_dim, block_dim);
     encoder.end_encoding();
     command_buffer.commit();
     command_buffer.wait_until_completed();

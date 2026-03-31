@@ -14,9 +14,9 @@ type BF = BaseField;
 
 /// Helper to set bytes on a compute encoder at a given argument index.
 fn set_bytes<T: Sized>(encoder: &ComputeCommandEncoderRef, value: &T, index: u64) {
-    let ptr = value as *const T as *const u8;
-    let len = std::mem::size_of::<T>();
-    encoder.set_bytes(index, unsafe { std::slice::from_raw_parts(ptr, len) }, len as u64);
+    let ptr = value as *const T as *const std::ffi::c_void;
+    let len = std::mem::size_of::<T>() as u64;
+    encoder.set_bytes(index, len, ptr);
 }
 
 /// Dispatch a single-stage B2N (bitrev-Z to natural) NTT kernel.
@@ -62,7 +62,7 @@ pub fn dispatch_b2n_one_stage(
     let block_dim = MTLSize::new(32, 1, 1);
     let grid_dim = MTLSize::new(((n + 31) / 32) as u64, 1, 1);
 
-    encoder.dispatch_threadgroups(grid_dim, block_dim);
+    encoder.dispatch_thread_groups(grid_dim, block_dim);
     encoder.end_encoding();
     command_buffer.commit();
     command_buffer.wait_until_completed();
@@ -123,7 +123,7 @@ pub fn dispatch_b2n_multi_stage(
     );
     let grid_dim = MTLSize::new(total_threadgroups as u64, 1, 1);
 
-    encoder.dispatch_threadgroups(grid_dim, block_dim);
+    encoder.dispatch_thread_groups(grid_dim, block_dim);
     encoder.end_encoding();
     command_buffer.commit();
     command_buffer.wait_until_completed();
@@ -169,7 +169,7 @@ pub fn dispatch_n2b_one_stage(
     let block_dim = MTLSize::new(32, 1, 1);
     let grid_dim = MTLSize::new(((n + 31) / 32) as u64, 1, 1);
 
-    encoder.dispatch_threadgroups(grid_dim, block_dim);
+    encoder.dispatch_thread_groups(grid_dim, block_dim);
     encoder.end_encoding();
     command_buffer.commit();
     command_buffer.wait_until_completed();
@@ -227,7 +227,7 @@ pub fn dispatch_n2b_multi_stage(
     );
     let grid_dim = MTLSize::new(total_threadgroups as u64, 1, 1);
 
-    encoder.dispatch_threadgroups(grid_dim, block_dim);
+    encoder.dispatch_thread_groups(grid_dim, block_dim);
     encoder.end_encoding();
     command_buffer.commit();
     command_buffer.wait_until_completed();

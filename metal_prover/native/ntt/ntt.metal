@@ -1,3 +1,4 @@
+#pragma once
 #include <metal_stdlib>
 using namespace metal;
 
@@ -60,14 +61,14 @@ DEVICE_FORCEINLINE void store_two_vectorized_complex(device bf *gmem_out, const 
   }
 }
 
-DEVICE_FORCEINLINE void exchg_dit(thread e2f &a, thread e2f &b, const e2f &twiddle) {
+DEVICE_FORCEINLINE void exchg_dit(thread e2f &a, thread e2f &b, thread const e2f &twiddle) {
   b = e2f::mul(b, twiddle);
   const auto a_tmp = a;
   a = e2f::add(a_tmp, b);
   b = e2f::sub(a_tmp, b);
 }
 
-DEVICE_FORCEINLINE void exchg_dif(thread e2f &a, thread e2f &b, const e2f &twiddle) {
+DEVICE_FORCEINLINE void exchg_dif(thread e2f &a, thread e2f &b, thread const e2f &twiddle) {
   const auto a_tmp = a;
   a = e2f::add(a_tmp, b);
   b = e2f::sub(a_tmp, b);
@@ -137,12 +138,12 @@ DEVICE_FORCEINLINE e2f lde_scale(const thread powers_data_3_layer &powers_w,
 }
 
 template <typename T> struct COLS_PER_BLOCK {};
-template <> struct COLS_PER_BLOCK<bf> { static constexpr unsigned VAL = 8; };
-template <> struct COLS_PER_BLOCK<e2f> { static constexpr unsigned VAL = 4; };
+template <> struct COLS_PER_BLOCK<bf> { enum : unsigned { VAL = 8 }; };
+template <> struct COLS_PER_BLOCK<e2f> { enum : unsigned { VAL = 4 }; };
 
 template <typename T> struct COLS_INC {};
-template <> struct COLS_INC<bf> { static constexpr unsigned VAL = 2; };
-template <> struct COLS_INC<e2f> { static constexpr unsigned VAL = 1; };
+template <> struct COLS_INC<bf> { enum : unsigned { VAL = 2 }; };
+template <> struct COLS_INC<e2f> { enum : unsigned { VAL = 1 }; };
 
 } // namespace ntt
 } // namespace airbender

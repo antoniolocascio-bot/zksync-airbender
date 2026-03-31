@@ -13,21 +13,21 @@ typedef base_field bf;
 typedef ext2_field e2;
 typedef ext4_field e4;
 
-// Binary operations for scan
+// Binary operations for scan (pass by value to avoid address space qualifier issues)
 template <typename T> struct add_op {
-  DEVICE_FORCEINLINE T operator()(const T &a, const T &b) const { return T::add(a, b); }
+  DEVICE_FORCEINLINE T operator()(T a, T b) const { return T::add(a, b); }
   static DEVICE_FORCEINLINE T identity() { return T::zero(); }
 };
 template <> struct add_op<u32> {
-  DEVICE_FORCEINLINE u32 operator()(const u32 &a, const u32 &b) const { return a + b; }
+  DEVICE_FORCEINLINE u32 operator()(u32 a, u32 b) const { return a + b; }
   static DEVICE_FORCEINLINE u32 identity() { return 0; }
 };
 template <typename T> struct mul_op {
-  DEVICE_FORCEINLINE T operator()(const T &a, const T &b) const { return T::mul(a, b); }
+  DEVICE_FORCEINLINE T operator()(T a, T b) const { return T::mul(a, b); }
   static DEVICE_FORCEINLINE T identity() { return T::one(); }
 };
 template <> struct mul_op<u32> {
-  DEVICE_FORCEINLINE u32 operator()(const u32 &a, const u32 &b) const { return a * b; }
+  DEVICE_FORCEINLINE u32 operator()(u32 a, u32 b) const { return a * b; }
   static DEVICE_FORCEINLINE u32 identity() { return 1; }
 };
 
@@ -35,7 +35,7 @@ template <> struct mul_op<u32> {
 // Pass 1: Each threadgroup computes its local scan and writes the threadgroup total to partial_sums.
 // Pass 2: A fixup kernel adds the scanned partial sums to each threadgroup's results.
 
-constexpr unsigned SCAN_BLOCK_SIZE = 256;
+constant constexpr unsigned SCAN_BLOCK_SIZE = 256;
 
 // Per-threadgroup inclusive scan using shared memory (Blelloch-style up-sweep/down-sweep)
 template <typename T, typename Op>

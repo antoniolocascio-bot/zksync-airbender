@@ -19,12 +19,12 @@ using bf = base_field;
 using e2 = ext2_field;
 using e4 = ext4_field;
 
-constexpr unsigned MAX_NON_BOOLEAN_CONSTRAINTS = 192;
-constexpr unsigned MAX_TERMS = 2208;
-constexpr unsigned MAX_EXPLICIT_COEFFS = 928;
-constexpr unsigned MAX_FLAT_COL_IDXS = 4192;
-constexpr uint8_t COEFF_IS_ONE = 0x00;
-constexpr uint8_t COEFF_IS_MINUS_ONE = 0x01;
+constant constexpr unsigned MAX_NON_BOOLEAN_CONSTRAINTS = 192;
+constant constexpr unsigned MAX_TERMS = 2208;
+constant constexpr unsigned MAX_EXPLICIT_COEFFS = 928;
+constant constexpr unsigned MAX_FLAT_COL_IDXS = 4192;
+constant constexpr uint8_t COEFF_IS_ONE = 0x00;
+constant constexpr uint8_t COEFF_IS_MINUS_ONE = 0x01;
 
 // Passed as constant buffer argument instead of __grid_constant__
 struct FlattenedGenericConstraintsMetadata {
@@ -45,21 +45,22 @@ struct FlattenedGenericConstraintsMetadata {
   unsigned num_non_boolean_constraints;
 };
 
-DEVICE_FORCEINLINE void maybe_apply_coeff(constant const FlattenedGenericConstraintsMetadata &metadata,
+DEVICE_FORCEINLINE void maybe_apply_coeff(device const FlattenedGenericConstraintsMetadata *metadata,
                                            const unsigned coeff_idx, thread unsigned &explicit_coeff_idx, thread bf &val) {
-  switch (metadata.coeffs_info[coeff_idx]) {
+  switch (metadata->coeffs_info[coeff_idx]) {
   case COEFF_IS_ONE:
     break;
   case COEFF_IS_MINUS_ONE:
     val = bf::neg(val);
     break;
   default:
-    val = bf::mul(val, metadata.explicit_coeffs[explicit_coeff_idx++]);
+    val = bf::mul(val, metadata->explicit_coeffs[explicit_coeff_idx++]);
   }
 }
 
+[[max_total_threads_per_threadgroup(128)]]
 kernel void ab_generic_constraints_kernel(
-    constant FlattenedGenericConstraintsMetadata &metadata [[buffer(0)]],
+    device const FlattenedGenericConstraintsMetadata *metadata [[buffer(0)]],
     device const bf *witness_cols [[buffer(1)]],
     constant size_t &witness_stride [[buffer(2)]],
     device const bf *memory_cols [[buffer(3)]],
@@ -68,8 +69,7 @@ kernel void ab_generic_constraints_kernel(
     device bf *quotient [[buffer(6)]],
     constant size_t &quotient_stride [[buffer(7)]],
     constant unsigned &log_n [[buffer(8)]],
-    uint gid [[thread_position_in_grid]])
-  [[max_total_threads_per_threadgroup(128)]] {
+    uint gid [[thread_position_in_grid]]) {
   const unsigned n = 1 << log_n;
   if (gid >= n)
     return;
@@ -83,8 +83,8 @@ kernel void ab_generic_constraints_kernel(
   unsigned alpha_idx = 0;
 
   // Boolean constraints
-  for (unsigned constraint = 0; constraint < metadata.num_boolean_constraints; constraint++) {
-    const bf val_neg = bf::neg(w_row[metadata.col_idxs[constraint] * witness_stride]);
+  for (unsigned constraint = 0; constraint < metadata->num_boolean_constraints; constraint++) {
+    const bf val_neg = bf::neg(w_row[metadata->col_idxs[constraint] * witness_stride]);
     const bf val_squared = bf::mul(val_neg, val_neg);
     const e4 alpha_power = alphas[alpha_idx++];
     acc_quadratic = e4::add(acc_quadratic, e4::mul(alpha_power, val_squared));
@@ -92,19 +92,19 @@ kernel void ab_generic_constraints_kernel(
   }
 
   unsigned flat_term_idx = 0;
-  unsigned flat_col_idx = metadata.num_boolean_constraints;
+  unsigned flat_col_idx = metadata->num_boolean_constraints;
   unsigned explicit_coeff_idx = 0;
 
   // Non-boolean quadratic constraints
-  for (unsigned constraint = 0; constraint < metadata.num_non_boolean_quadratic_constraints; constraint++) {
-    const unsigned num_quadratic_terms = metadata.num_quadratic_terms[constraint];
-    const unsigned num_linear_terms = metadata.num_linear_terms[constraint];
+  for (unsigned constraint = 0; constraint < metadata->num_non_boolean_quadratic_constraints; constraint++) {
+    const unsigned num_quadratic_terms = metadata->num_quadratic_terms[constraint];
+    const unsigned num_linear_terms = metadata->num_linear_terms[constraint];
 
     bf quadratic_contribution = bf::zero();
     unsigned lim = flat_term_idx + num_quadratic_terms;
     for (; flat_term_idx < lim; flat_term_idx++) {
-      const unsigned col0 = metadata.col_idxs[flat_col_idx++];
-      const unsigned col1 = metadata.col_idxs[flat_col_idx++];
+      const unsigned col0 = metadata->col_idxs[flat_col_idx++];
+      const unsigned col1 = metadata->col_idxs[flat_col_idx++];
       bf val0 = (col0 & COL_TYPE_MEMORY) ? m_row[(col0 & COL_IDX_MASK) * memory_stride] : w_row[col0 * witness_stride];
       bf val1 = (col1 & COL_TYPE_MEMORY) ? m_row[(col1 & COL_IDX_MASK) * memory_stride] : w_row[col1 * witness_stride];
       bf val = bf::mul(val0, val1);
@@ -118,7 +118,7 @@ kernel void ab_generic_constraints_kernel(
       bf linear_contribution = bf::zero();
       lim = flat_term_idx + num_linear_terms;
       for (; flat_term_idx < lim; flat_term_idx++) {
-        const unsigned col = metadata.col_idxs[flat_col_idx++];
+        const unsigned col = metadata->col_idxs[flat_col_idx++];
         bf val = (col & COL_TYPE_MEMORY) ? m_row[(col & COL_IDX_MASK) * memory_stride] : w_row[col * witness_stride];
         maybe_apply_coeff(metadata, flat_term_idx, explicit_coeff_idx, val);
         linear_contribution = bf::add(linear_contribution, val);
@@ -128,12 +128,12 @@ kernel void ab_generic_constraints_kernel(
   }
 
   // Linear-only constraints
-  for (unsigned constraint = metadata.num_non_boolean_quadratic_constraints; constraint < metadata.num_non_boolean_constraints; constraint++) {
-    const unsigned num_linear_terms = metadata.num_linear_terms[constraint];
+  for (unsigned constraint = metadata->num_non_boolean_quadratic_constraints; constraint < metadata->num_non_boolean_constraints; constraint++) {
+    const unsigned num_linear_terms = metadata->num_linear_terms[constraint];
     bf linear_contribution = bf::zero();
     const unsigned lim = flat_term_idx + num_linear_terms;
     for (; flat_term_idx < lim; flat_term_idx++) {
-      const unsigned col = metadata.col_idxs[flat_col_idx++];
+      const unsigned col = metadata->col_idxs[flat_col_idx++];
       bf val = (col & COL_TYPE_MEMORY) ? m_row[(col & COL_IDX_MASK) * memory_stride] : w_row[col * witness_stride];
       maybe_apply_coeff(metadata, flat_term_idx, explicit_coeff_idx, val);
       linear_contribution = bf::add(linear_contribution, val);
@@ -142,8 +142,8 @@ kernel void ab_generic_constraints_kernel(
     acc_linear = e4::add(acc_linear, e4::mul(alpha_power, linear_contribution));
   }
 
-  acc_quadratic = e4::mul(acc_quadratic, metadata.decompression_factor_squared);
-  acc_linear = e4::mul(acc_linear, metadata.decompression_factor);
+  acc_quadratic = e4::mul(acc_quadratic, metadata->decompression_factor_squared);
+  acc_linear = e4::mul(acc_linear, metadata->decompression_factor);
   e4 acc = e4::add(acc_quadratic, acc_linear);
 
   // Write e4 result to quotient as 4 bf components

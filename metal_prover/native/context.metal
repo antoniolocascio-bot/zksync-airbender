@@ -1,3 +1,4 @@
+#pragma once
 #include <metal_stdlib>
 using namespace metal;
 
@@ -10,8 +11,8 @@ using namespace airbender::memory;
 namespace airbender {
 namespace field {
 
-static constexpr unsigned OMEGA_LOG_ORDER = 26;
-static constexpr unsigned CIRCLE_GROUP_LOG_ORDER = 31;
+constant constexpr unsigned OMEGA_LOG_ORDER = 26;
+constant constexpr unsigned CIRCLE_GROUP_LOG_ORDER = 31;
 
 struct powers_layer_data {
   device const ext2_field *values;
