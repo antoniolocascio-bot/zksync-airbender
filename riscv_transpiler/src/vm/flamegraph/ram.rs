@@ -1,4 +1,4 @@
-use crate::vm::{RamPeek, RamWithRomRegion};
+use crate::vm::{RamPeek, RamWithRomRegion, SimpleRam};
 
 /// Minimal RAM contract needed by the flamegraph unwinder.
 ///
@@ -39,6 +39,15 @@ impl FlamegraphReadableRam for [u32] {
 
 impl<const ROM_BOUND_SECOND_WORD_BITS: usize> FlamegraphReadableRam
     for RamWithRomRegion<ROM_BOUND_SECOND_WORD_BITS>
+{
+    #[inline(always)]
+    fn total_words_for_flamegraph(&self) -> usize {
+        self.backing.len()
+    }
+}
+
+impl<const ROM_BOUND_SECOND_WORD_BITS: usize> FlamegraphReadableRam
+    for SimpleRam<ROM_BOUND_SECOND_WORD_BITS>
 {
     #[inline(always)]
     fn total_words_for_flamegraph(&self) -> usize {

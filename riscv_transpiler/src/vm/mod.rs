@@ -13,6 +13,7 @@ mod flamegraph;
 mod instructions;
 mod ram_with_rom_region;
 mod replay_snapshotter;
+mod simple_ram;
 mod simple_tape;
 
 pub(crate) mod delegations;
@@ -22,6 +23,7 @@ pub use self::execution_observer::ExecutionObserver;
 pub use self::flamegraph::*;
 pub use self::ram_with_rom_region::RamWithRomRegion;
 pub use self::replay_snapshotter::*;
+pub use self::simple_ram::SimpleRam;
 pub use self::simple_tape::SimpleTape;
 
 pub trait Counters: 'static + Clone + Copy + Debug + PartialEq + Eq + Send + Sync {
