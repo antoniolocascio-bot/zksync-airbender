@@ -1,4 +1,4 @@
-use std::alloc::Allocator;
+use std::alloc::{Allocator, Layout};
 
 use common_constants::TimestampScalar;
 
@@ -18,13 +18,19 @@ impl<const ROM_BOUND_SECOND_WORD_BITS: usize> RamWithRomRegion<ROM_BOUND_SECOND_
         assert!(content.len() <= num_rom_words);
         let ram_words = total_size_bytes / core::mem::size_of::<u32>();
 
-        let mut backing = vec![
-            Register {
-                value: 0,
-                timestamp: 0
-            };
-            ram_words
-        ];
+        // Use alloc_zeroed so the kernel can provide lazy zero pages (copy-on-write).
+        // This avoids touching every page upfront, reducing peak memory from 4 GiB
+        // to only the pages actually written during execution.
+        // Safety: Register is repr(C, align(16)) and its zero-initialized form
+        // (timestamp: 0u64, value: 0u32, padding: 0) is valid.
+        let mut backing = unsafe {
+            let layout = Layout::array::<Register>(ram_words).expect("layout overflow");
+            let ptr = std::alloc::alloc_zeroed(layout) as *mut Register;
+            if ptr.is_null() {
+                std::alloc::handle_alloc_error(layout);
+            }
+            Vec::from_raw_parts(ptr, ram_words, ram_words)
+        };
         for (dst, src) in backing.iter_mut().zip(content.iter()) {
             dst.value = *src;
         }
